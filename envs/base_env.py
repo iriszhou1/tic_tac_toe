@@ -18,6 +18,7 @@ class BaseEnv(Env):
         self.board: list[list[str]] = [[" ", " ", " "],
                                        [" ", " ", " "],
                                        [" ", " ", " "]]
+        self.n: int = len(self.board)
 
         # Array representation of board, where "X" = 1, "O" = -1, and " " = 0
         self.array_board: np.array = np.zeros((3, 3), dtype=int)
@@ -27,14 +28,7 @@ class BaseEnv(Env):
         self.turn_is_X: bool = True
         self.cpu: str = "X"
         self.terminated: bool = False
-
-        self.neighbors = []
-        for x in [-1, 0, 1]:
-            for y in [-1, 0, 1]:
-                if not (x == 0 and y == 0):
-                    self.neighbors.append((x, y))
-        # print(self.neighbors)
-
+        self.num_moves: int = 0
         print('X goes first!')
 
 
@@ -44,19 +38,19 @@ class BaseEnv(Env):
 
     def render(self) -> None:
         """
-        Renders current state of board.
+        Prints current state of board.
         """
-        mid_line = ["---" for i in range(len(self.board))]
+        mid_line = ["---" for i in range(self.n)]
         mid_line = "-".join(mid_line)
 
-        for i in range(len(self.board)):
+        for i in range(self.n):
             line = f" {self.board[i][0]}"
-            for j in range(1, len(self.board)):
+            for j in range(1, self.n):
                 line += f" | {self.board[i][j]}"
 
             # Print values on board and dividing line
             print(line)
-            if i < len(self.board) - 1:
+            if i < self.n - 1:
                 print(mid_line)
 
 
@@ -75,6 +69,13 @@ class BaseEnv(Env):
         :param move: tuple of (x, y) coordinate for desired move, where (0, 0) is in the top left corner,
                      and (2, 2) is in the bottom right corner. x is the row, and y is the column.
         """
+        if type(move) != tuple:
+            raise ValueError("Input must be a tuple of integer values representing desired position on board!")
+        elif len(move) != 2:
+            raise ValueError("Input must have 2 arguments (x, y) representing row and column of desired position!")
+        elif type(move[0]) != int or type(move[1]) != int:
+            raise ValueError("Input must be a tuple of integer values representing desired position on board!")
+
         if self.turn_is_X:
             player = "X"
             number = 1
@@ -86,11 +87,13 @@ class BaseEnv(Env):
         if self.move_is_valid(move):
             self.board[x][y] = player
             self.array_board[x][y] = number
-            self.turn_is_X = not self.turn_is_X
+            self.num_moves += 1
+
+            self.check_if_game_over(move)
+            if not self.terminated:
+                self.turn_is_X = not self.turn_is_X
         else:
             raise ValueError(f"The move {move} is not a valid move. Try again.")
-
-        self.check_if_won(move)
 
 
     def in_board(self, position: tuple[int]) -> bool:
@@ -103,12 +106,12 @@ class BaseEnv(Env):
         :return: True if position is in board, False otherwise.
         """
         x, y = position
-        in_height = x >= 0 and x < len(self.board)
-        in_width = y >= 0 and y < len(self.board)
+        in_height = x >= 0 and x < self.n
+        in_width = y >= 0 and y < self.n
         in_board = in_height and in_width
 
         if not in_board:
-            raise ValueError(f"The position {position} is not in the board!")
+            raise ValueError(f"The position {position} is not in the board! Input 0 <= x, y < {self.n}.")
         return in_board
 
 
@@ -125,7 +128,7 @@ class BaseEnv(Env):
         return self.in_board(move) and self.board[x][y] == " "
 
 
-    def check_if_won(self, move: tuple[int]) -> None:
+    def check_if_game_over(self, move: tuple[int]) -> None:
         """
         Given player's most recent move, returns True if player has won, False otherwise.
 
@@ -133,21 +136,32 @@ class BaseEnv(Env):
                      and (2, 2) is in the bottom right corner. x is the row, and y is the column.
         :return: True if game is won, False otherwise.
         """
-        # Check if 3 in a row, update self.game_over
-        # TODO: optimize checks-- only need to check the lines that the move is on
-        vertical_sum = np.sum(self.array_board, axis=0)
-        horizontal_sum = np.sum(self.array_board, axis=1)
-        diag1_sum = [np.trace(self.array_board)]
-        diag2_sum = [np.trace(np.flip(self.array_board, axis=1))]
+        x, y = move
+        three_in_row = False
 
-        sums = [vertical_sum, horizontal_sum, diag1_sum, diag2_sum]
+        # Check row and column of most recent move
+        vertical_sum = np.sum(self.array_board[:, y])
+        horizontal_sum = np.sum(self.array_board[x, :])
+        sums = [vertical_sum, horizontal_sum]
+
+        # Check diagonal (if applicable)
+        if (y == x):
+            diag1_sum = [np.trace(self.array_board)]
+            sums.append(diag1_sum)
+        if (y == -x + self.n - 1):
+            diag2_sum = [np.trace(np.flip(self.array_board, axis=1))]
+            sums.append(diag2_sum)
         for vals in sums:
-            if (len(self.board) in vals) or (-len(self.board) in vals):
-                self.terminated = True
+            if (self.n in vals) or (-self.n in vals):
+                three_in_row = True
                 break
 
-        if self.terminated:
-            if self.turn_is_X:
-                print(f'X has won! Better luck next time!')
+        # Terminate game if board is full or player has won
+        if self.num_moves == 9 or three_in_row:
+            self.terminated = True
+            if three_in_row and self.turn_is_X:
+                print(f'X has won!')
+            elif three_in_row and not self.turn_is_X:
+                print(f'O has won!')
             else:
-                print(f'O has won! Congratulations!')
+                print('It\'s a draw! Game over!')

@@ -10,6 +10,7 @@ def clean_move(move: str) -> tuple[int]:
 
 def main():
     env = BaseEnv()
+    env.render()
 
     while not env.terminated:
         # Get next move
